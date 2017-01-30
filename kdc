@@ -86,43 +86,12 @@ fi
 
 DOCKERIMAGE='tillt/docker-kdc:latest'
 CONTAINER='docker'
-CONTROL_VM='VBoxManage controlvm boot2docker-vm'
 GET_KDC_HOST="echo $KDC_NATHOST"
 
 # Adjust container in case of OSX.
 if [[ $OSTYPE =~ darwin.+ ]]; then
-	CONTAINER='boot2docker'
-	GET_KDC_HOST='boot2docker ip'
+	CONTAINER='docker'
 fi
-
-
-# Start boot2docker if not running and create port forwarding rules for OSX.
-function prepareDocker {
-	if [[ $CONTAINER == "boot2docker" ]]; then
-		boot2docker status &> /dev/null || boot2docker init
-		if [[ `boot2docker status` == "poweroff" ]]; then
-			boot2docker up
-			setupPortForward
-		fi
-		`$(boot2docker shellinit)`
-	fi
-}
-
-
-# Port forwarding setup for OSX.
-function setupPortForward {
-	$CONTROL_VM natpf1 delete "$KDC_PORT/tcp" &> /dev/null
-	$CONTROL_VM natpf1 delete "$KDC_PORT/udp" &> /dev/null
-	$CONTROL_VM natpf1 "$KDC_PORT/tcp,tcp,$KDC_NATHOST,$KDC_PORT,,$KDC_PORT"
-	$CONTROL_VM natpf1 "$KDC_PORT/udp,udp,$KDC_NATHOST,$KDC_PORT,,$KDC_PORT"
-}
-
-
-# Port forwarding teardown for OSX.
-function deletePortForward {
-	$CONTROL_VM natpf1 delete "$KDC_PORT/tcp" &> /dev/null
-	$CONTROL_VM natpf1 delete "$KDC_PORT/udp" &> /dev/null
-}
 
 
 # Start docker container.
@@ -158,10 +127,6 @@ function startDocker {
 function stopDocker {
 	docker stop $KDC_HOST_NAME &> /dev/null
 	docker rm $KDC_HOST_NAME &> /dev/null
-	if [[ $CONTAINER == "boot2docker" ]]; then
-		deletePortForward
-		[[ `boot2docker status` == "running" ]] && boot2docker down
-	fi
 	rm -f krb5.conf
 	rm -f krb5.keytab
 	echo "Kerberos KDC stopped and removed"
@@ -211,15 +176,6 @@ function buildImage {
 }
 
 
-function testBoot2dockerActive {
-	boot2docker status &> /dev/null || boot2docker init
-	if [[ `boot2docker status` == "running" ]]; then
-		return 0
-	fi
-	return 1
-}
-
-
 function testKdcReachable {
 	local HOST=$($GET_KDC_HOST)
 	echo -n "at $HOST:$KDC_PORT... "
@@ -235,19 +191,15 @@ function testKdcReachable {
 
 case "$1" in
 	start)
-		prepareDocker
 		startDocker
 		;;
 	stop)
-		prepareDocker
 		stopDocker
 		;;
 	clean)
-		prepareDocker
 		docker rmi -f $DOCKERIMAGE
 		;;
 	build)
-		prepareDocker
 		buildImage
 		;;
 	shellinit)
